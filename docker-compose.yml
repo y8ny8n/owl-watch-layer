@@ -1,0 +1,46 @@
+# 온파일럿(OnPilot) 데모 — 컨테이너 원샷 구성
+# 망분리 반입: `docker compose build` 후 `docker save` → tar → 폐쇄망 `docker load`
+services:
+  onpilot:
+    build: ./app
+    container_name: onpilot
+    env_file: .env
+    ports:
+      - "8080:8080"
+    depends_on:
+      - ollama
+      - pfdb
+    # 개발 중 코드 핫리로드용 (운영 배포 시 제거)
+    volumes:
+      - ./app:/app
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: onpilot-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama   # 모델 사전 다운로드분 보존 (망분리 반입 핵심)
+    restart: unless-stopped
+
+  pfdb:
+    image: postgres:15
+    container_name: onpilot-pfdb
+    environment:
+      POSTGRES_DB: pfdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pfdb_data:/var/lib/postgresql/data
+      # 최초 기동 시 schema/*.sql → seed/*.sql 순서로 자동 적재
+      # (postgres init은 하위 디렉터리를 재귀하지 않으므로 00_init.sh가 대신 순회)
+      - ./db:/onpilot-db:ro
+      - ./db/00_init.sh:/docker-entrypoint-initdb.d/00_init.sh:ro
+    restart: unless-stopped
+
+volumes:
+  ollama_models:
+  pfdb_data:

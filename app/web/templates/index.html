@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OWL — On-prem Watch Layer</title>
+  <link rel="stylesheet" href="/static/css/style.css?v=13">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="owl-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="26" height="26">
+          <circle cx="16" cy="16" r="15" fill="#141b2e" stroke="#f5b301" stroke-width="1.5"/>
+          <circle cx="11" cy="14" r="4.2" fill="#0b1020" stroke="#f5b301" stroke-width="1.3"/>
+          <circle cx="21" cy="14" r="4.2" fill="#0b1020" stroke="#f5b301" stroke-width="1.3"/>
+          <circle cx="11" cy="14" r="1.7" fill="#ffc94a"/>
+          <circle cx="21" cy="14" r="1.7" fill="#ffc94a"/>
+          <path d="M14 19 L16 22 L18 19 Z" fill="#f5b301"/>
+        </svg>
+      </span>
+      <span class="brand-word">OWL</span>
+      <span class="brand-sub">On-prem Watch Layer · 밤새 지켜보는 눈</span>
+      <span class="live-dot" title="24시간 감시 중">LIVE</span>
+    </div>
+    <div class="topbar-actions">
+      <select id="statusFilter" class="select">
+        <option value="">전체</option>
+        <option value="new">신규</option>
+        <option value="reviewed">검토됨</option>
+        <option value="actioned">조치됨</option>
+        <option value="dismissed">기각</option>
+      </select>
+      <button id="runBtn" class="btn btn-primary">지금 분석</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="feed-pane">
+      <div class="pane-head">감시 리포트</div>
+      <div class="window-seg" id="windowSeg" role="tablist" aria-label="분석 기간">
+        <button type="button" class="seg-btn" data-window="1d">일</button>
+        <button type="button" class="seg-btn seg-active" data-window="7d">주</button>
+        <button type="button" class="seg-btn" data-window="30d">월</button>
+      </div>
+      <div id="summaryBar" class="summary-bar"></div>
+      <div id="feed" class="feed"></div>
+    </section>
+    <section class="detail-pane">
+      <div id="detail" class="detail">
+        <div class="empty-state">
+          <div class="empty-owl">🦉</div>
+          좌측 목록에서 리포트를 선택하세요.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <button id="chatToggle" class="chat-toggle" title="정책 챗">🦉</button>
+  <aside id="chatPanel" class="chat-panel hidden">
+    <div class="chat-header">
+      <span>OWL 정책 챗</span>
+      <button id="chatClose" class="chat-close">×</button>
+    </div>
+    <div id="chatTargetInfo" class="chat-target">리포트를 먼저 선택하세요.</div>
+    <div id="chatLog" class="chat-log"></div>
+    <form id="chatForm" class="chat-form">
+      <input id="chatInput" type="text" placeholder="예: 이 사람 야간 USB 막아줘" autocomplete="off">
+      <button type="submit" class="btn btn-primary">전송</button>
+    </form>
+  </aside>
+
+  <div id="previewModal" class="modal-overlay hidden">
+    <div class="modal">
+      <h3>정책 변경 미리보기</h3>
+      <div id="previewTarget" class="preview-target"></div>
+      <pre id="previewDiff" class="diff-box"></pre>
+      <div class="modal-actions">
+        <button id="previewCancel" class="btn">취소</button>
+        <button id="previewApprove" class="btn btn-primary">승인</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="eventsModal" class="modal-overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-head">
+        <h3>원본 로그 근거 <span id="eventsCount" class="events-count"></span></h3>
+        <button id="eventsClose" class="chat-close">×</button>
+      </div>
+      <div class="modal-sub">AI 요약이 아니라, 에이전트가 실제로 수집한 반출 로그입니다 (탐지=SQL).</div>
+      <div id="eventsBody" class="events-body"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/static/js/app.js?v=13"></script>
+</body>
+</html>
