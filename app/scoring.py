@@ -2,8 +2,8 @@
 
 설계문서 §3.2:
   risk_score = min(100, Σ 가중치)
-  severity   = high(≥60) / mid(≥35) / low(그 외)
-  적재 임계   = RISK_THRESHOLD(기본 35) 이상만
+  severity   = high(≥60) / mid(≥35) / watch(≥20) / low(그 외)
+  적재 임계   = WATCH_THRESHOLD(기본 20) 이상만 (관심 이상만 리포트)
 설계 의도: 단일 신호 최대 30점 → 혼자선 high 불가. "겹침이 신뢰를 만든다"를 점수로 강제.
 
 이 모듈은 순수 함수라 SQL/AI 없이 단위테스트 가능. 세션에서 테스트와 함께 완성 권장.

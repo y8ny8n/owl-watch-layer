@@ -45,7 +45,7 @@ def run_analysis(license_code: str | None = None, window_hours: int | None = Non
     """한 사이클 실행. 적재된 리포트 수 반환.
 
     1) find_exfil_candidates() 로 후보 조회
-    2) score()/severity(), 임계(RISK_THRESHOLD) 미만 스킵
+    2) score()/severity(), 임계(WATCH_THRESHOLD, 기본 20) 미만 스킵
     3) build_signals_json() → summarize() 서사 생성
     4) ai_analysis_result_t 적재
     """

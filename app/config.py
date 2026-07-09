@@ -18,8 +18,8 @@ class Config:
     OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma:2b")
 
     # 분석 파라미터 (설계문서 §3.2)
-    RISK_THRESHOLD = int(os.getenv("RISK_THRESHOLD", "35"))   # 이 이상 = 고위험/주의 후보
-    WATCH_THRESHOLD = int(os.getenv("WATCH_THRESHOLD", "20"))  # 이 이상~RISK 미만 = 관심(watch)
+    # 적재 임계: 이 점수 이상이면 리포트로 올린다(관심 이상). mid(35)/high(60) 경계는 scoring.severity() 참조.
+    WATCH_THRESHOLD = int(os.getenv("WATCH_THRESHOLD", "20"))
     WORKHOUR_START = int(os.getenv("WORKHOUR_START", "8"))
     WORKHOUR_END = int(os.getenv("WORKHOUR_END", "19"))
     ANALYSIS_WINDOW_HOURS = int(os.getenv("ANALYSIS_WINDOW_HOURS", "168"))
