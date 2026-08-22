@@ -4,10 +4,12 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from config import config
 from db import fetch_all, fetch_one
 from analyzer import run_analysis
+import watchlist_state
 
 router = APIRouter(tags=["reports"])
 
@@ -115,10 +117,9 @@ def run_reports():
 
 _SUMMARY_SQL = """
 SELECT
-  (SELECT count(*) FROM agent_t
-     WHERE license_code = %(license_code)s
-       AND is_deleted = false
-       AND agent_info::text LIKE %(cohort)s) AS scanned,
+  (SELECT count(*) FROM agent_t a
+     WHERE a.license_code = %(license_code)s
+       AND to_jsonb(a.*)::text LIKE %(cohort)s) AS scanned,
   count(*) FILTER (WHERE severity = 'high')  AS high,
   count(*) FILTER (WHERE severity = 'mid')   AS mid,
   count(*) FILTER (WHERE severity = 'watch') AS watch,
@@ -131,10 +132,14 @@ WHERE license_code = %(license_code)s
 
 @router.get("/api/summary")
 def get_summary(window: str | None = None):
-    """피드 상단 요약: 스캔 대상(데모 코호트) 총원 + 해당 기간 렌즈의 심각도별 선별 결과."""
+    """피드 상단 요약: 데모 스캔 코호트(owl-demo 마커) 총원 + 해당 기간 렌즈의 심각도별 선별 결과.
+    스키마 무관하게 동작하도록 to_jsonb(a.*)::text 로 행 전체에서 마커를 찾는다:
+      - 도커 데모(DEMO0001): 시드가 user_info 에 _cohort=owl-demo 를 심음
+      - 네이티브(oa233262): owl-demo 에이전트가 agent_info 에 마커 보유(실 스키마)
+    구버전은 데모 스키마에 없는 agent_info/is_deleted 컬럼을 직접 참조해 500이 났음."""
     row = fetch_one(_SUMMARY_SQL, {
         "license_code": config.DEMO_LICENSE_CODE,
-        "cohort": "%owl-demo%",  # 데모 스캔 대상 코호트(agent_info 마커). 전체 agent_t가 아닌 데모 표본
+        "cohort": "%owl-demo%",
         "window": _norm_window(window),
     })
     return row or {}
@@ -144,3 +149,23 @@ def get_summary(window: str | None = None):
 def get_config():
     """UI가 정책 적용(apply) 호출 시 필요한 license_code 조회."""
     return {"license_code": config.DEMO_LICENSE_CODE}
+
+
+# ── 감시목록 '지속 관찰' 핀 ──
+
+class PinRequest(BaseModel):
+    pno: int
+    pinned: bool
+
+
+@router.get("/api/watchlist/pins")
+def get_watchlist_pins():
+    """핀(지속 관찰) 목록 — 감시목록 뷰가 로드 시 반영."""
+    return {"pinned": watchlist_state.list_pins()}
+
+
+@router.post("/api/watchlist/pin")
+def set_watchlist_pin(req: PinRequest):
+    """리포트를 '지속 관찰'로 고정/해제. 재분석과 무관하게 로컬 유지."""
+    pinned = watchlist_state.set_pin(req.pno, req.pinned)
+    return {"ok": True, "pinned": pinned}

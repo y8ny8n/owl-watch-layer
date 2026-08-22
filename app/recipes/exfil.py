@@ -35,72 +35,51 @@ _UNOFFICIAL_CATEGORIES = [1, 2, 7, 10]
 _RECURRENCE_HORIZON_DAYS = 56   # 8주 회고
 _RECURRENCE_MIN_WEEKS = 2       # 2주 이상 반복이면 지속 신호
 
-_CROSS_CHANNEL_SQL = """
-WITH allowed AS (
+# 채널별 허용로그 SELECT 조각(모두 동일 컬럼/타입 반환). 설치 마법사 데이터소스 토글로
+# 켜진 채널만 골라 UNION ALL 로 엮는다(config.ENABLED_CHANNELS). 실제 테이블명은 api-spec 대조.
+# 별칭(AS fn …)은 어느 조각이 첫 SELECT 가 되든 바깥 쿼리 컬럼명이 유지되도록 모든 조각에 부여.
+_CHANNEL_FRAGMENTS = {
+    "media": """
     SELECT agent_id, 'media'::text AS ch, log_time,
-           log_json->>'file_name' AS fn,
-           log_json->>'dst_file_name' AS dfn,
-           log_json->>'zip_filelist' AS zip,
-           log_json->>'hash_extract_fail_reason' AS hef,
-           (log_json->>'total_pri_cnt')::int AS total_pri,
-           NULL::int AS category,
-           NULL::int AS chatgpt_pri,
+           log_json->>'file_name' AS fn, log_json->>'dst_file_name' AS dfn,
+           log_json->>'zip_filelist' AS zip, log_json->>'hash_extract_fail_reason' AS hef,
+           (log_json->>'total_pri_cnt')::int AS total_pri, NULL::int AS category, NULL::int AS chatgpt_pri,
            agent_json
     FROM log_dlp_media_t
-    WHERE license_code = %(lic)s
-      AND log_json->>'is_block' = 'false'
-      AND log_time >= %(win_start)s
-
-    UNION ALL
-
-    SELECT agent_id, 'fileattach', log_time,
-           log_json->>'file_name',
-           log_json->>'dst_file_name',
-           log_json->>'zip_filelist',
-           log_json->>'hash_extract_fail_reason',
-           (log_json->>'total_pri_cnt')::int,
-           (log_json->>'category')::int,
-           NULL::int,
+    WHERE license_code = %(lic)s AND log_json->>'is_block' = 'false' AND log_time >= %(win_start)s""",
+    "fileattach": """
+    SELECT agent_id, 'fileattach'::text AS ch, log_time,
+           log_json->>'file_name' AS fn, log_json->>'dst_file_name' AS dfn,
+           log_json->>'zip_filelist' AS zip, log_json->>'hash_extract_fail_reason' AS hef,
+           (log_json->>'total_pri_cnt')::int AS total_pri, (log_json->>'category')::int AS category, NULL::int AS chatgpt_pri,
            agent_json
     FROM log_dlp_fileattach_t
-    WHERE license_code = %(lic)s
-      AND log_json->>'is_block' = 'false'
-      AND log_time >= %(win_start)s
-
-    UNION ALL
-
-    SELECT agent_id, 'website', log_time,
-           NULL::text, NULL::text, NULL::text, NULL::text,
-           NULL::int, NULL::int, NULL::int,
+    WHERE license_code = %(lic)s AND log_json->>'is_block' = 'false' AND log_time >= %(win_start)s""",
+    "website": """
+    SELECT agent_id, 'website'::text AS ch, log_time,
+           NULL::text AS fn, NULL::text AS dfn, NULL::text AS zip, NULL::text AS hef,
+           NULL::int AS total_pri, NULL::int AS category, NULL::int AS chatgpt_pri,
            agent_json
     FROM log_dlp_website_t
-    WHERE license_code = %(lic)s
-      AND (log_json->>'block_type')::int = 1
-      AND log_time >= %(win_start)s
-
-    UNION ALL
-
-    SELECT agent_id, 'sharedfolder', log_time,
-           log_json->>'file_name', NULL::text, NULL::text, NULL::text,
-           NULL::int, NULL::int, NULL::int,
+    WHERE license_code = %(lic)s AND (log_json->>'block_type')::int = 1 AND log_time >= %(win_start)s""",
+    "sharedfolder": """
+    SELECT agent_id, 'sharedfolder'::text AS ch, log_time,
+           log_json->>'file_name' AS fn, NULL::text AS dfn, NULL::text AS zip, NULL::text AS hef,
+           NULL::int AS total_pri, NULL::int AS category, NULL::int AS chatgpt_pri,
            agent_json
     FROM log_dlp_sharedfolder_t
-    WHERE license_code = %(lic)s
-      AND (log_json->>'block_type')::int = 0
-      AND log_time >= %(win_start)s
-
-    UNION ALL
-
-    SELECT agent_id, 'chatgpt', log_time,
-           NULL::text, NULL::text, NULL::text, NULL::text,
-           NULL::int, NULL::int,
-           (log_json->>'pri_cnt')::int,
+    WHERE license_code = %(lic)s AND (log_json->>'block_type')::int = 0 AND log_time >= %(win_start)s""",
+    "chatgpt": """
+    SELECT agent_id, 'chatgpt'::text AS ch, log_time,
+           NULL::text AS fn, NULL::text AS dfn, NULL::text AS zip, NULL::text AS hef,
+           NULL::int AS total_pri, NULL::int AS category, (log_json->>'pri_cnt')::int AS chatgpt_pri,
            agent_json
     FROM log_dlp_chatgpt_t
-    WHERE license_code = %(lic)s
-      AND (log_json->>'block_type')::int = 0
-      AND log_time >= %(win_start)s
-)
+    WHERE license_code = %(lic)s AND (log_json->>'block_type')::int = 0 AND log_time >= %(win_start)s""",
+}
+
+# allowed CTE 뒤에 붙는 집계 SELECT(채널 구성과 무관하게 동일).
+_CROSS_AGG_SQL = """
 SELECT
     agent_id,
     COUNT(DISTINCT ch)                                     AS distinct_channels,
@@ -175,6 +154,16 @@ GROUP BY agent_id
 HAVING COUNT(*) > 0
 ORDER BY distinct_channels DESC, total_allowed DESC;
 """
+
+
+def _build_cross_channel_sql(channels: list[str]) -> str | None:
+    """켜진 채널 조각만 UNION ALL 로 엮어 allowed CTE 를 만든 뒤 집계 SELECT 를 붙인다.
+    켜진 채널이 하나도 없으면 None(→ 분석 스킵)."""
+    frags = [_CHANNEL_FRAGMENTS[c] for c in channels if c in _CHANNEL_FRAGMENTS]
+    if not frags:
+        return None
+    return "WITH allowed AS (" + "\n    UNION ALL\n".join(frags) + "\n)" + _CROSS_AGG_SQL
+
 
 _USB_ONLY_SQL = """
 SELECT
@@ -297,8 +286,14 @@ def _target_user(row: dict) -> tuple[str | None, str | None]:
     return agent_json.get("id"), agent_json.get("name")
 
 
-def find_exfil_candidates(license_code: str, window_hours: int | None = None) -> list[dict]:
-    """5채널 허용로그 채널교차 유출 후보 산출 (설계문서 §3.3)."""
+def find_exfil_candidates(license_code: str, window_hours: int | None = None,
+                          channels: list[str] | None = None) -> list[dict]:
+    """켜진 채널 허용로그 채널교차 유출 후보 산출 (설계문서 §3.3).
+    channels 미지정 시 config.ENABLED_CHANNELS(설치 마법사 데이터소스 선택) 사용."""
+    channels = channels if channels is not None else config.ENABLED_CHANNELS
+    sql = _build_cross_channel_sql(channels)
+    if sql is None:
+        return []  # 켜진 채널 없음 → 분석 대상 없음
     params = {
         "lic": license_code,
         "win_start": _window_start(window_hours),
@@ -307,7 +302,7 @@ def find_exfil_candidates(license_code: str, window_hours: int | None = None) ->
         "workhour_start": config.WORKHOUR_START,
         "workhour_end": config.WORKHOUR_END,
     }
-    rows = fetch_all(_CROSS_CHANNEL_SQL, params)
+    rows = fetch_all(sql, params)
     recurrence = get_recurrence(license_code)   # agent_id → {weeks, first_seen}
 
     mapping = [

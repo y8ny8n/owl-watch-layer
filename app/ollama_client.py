@@ -14,7 +14,7 @@ from config import config
 
 logger = logging.getLogger(__name__)
 
-_TIMEOUT = 60.0
+_TIMEOUT = 120.0  # 큰 모델(gemma2:9b)이 CPU 컨테이너에서 느릴 때 조기 폴백 방지
 
 CHANNEL_LABEL = {
     "media": "매체(USB)", "fileattach": "파일첨부", "website": "웹사이트",

@@ -330,3 +330,10 @@ INSERT INTO log_dlp_fileattach_t (license_code, agent_id, log_time, log_json, ag
     '{"id": "ryu", "name": "류준열", "path": "C:\\PCFILTER\\Agent", "com_name": "SALES-RYU"}'::jsonb
 );
 
+
+-- ── 온파일럿 데모 스캔 코호트 마커 ──────────────────────────────────────────
+-- /api/summary 는 owl-demo 마커로 데모 표본을 센다(스키마무관 to_jsonb(a.*)::text 매칭).
+-- 도커 데모 테넌트(DEMO0001)는 전체가 곧 표본이므로 모든 에이전트에 마커를 심는다.
+-- (네이티브 실 스키마에선 owl-demo 에이전트가 agent_info 에 마커를 이미 보유한다.)
+UPDATE agent_t SET user_info = user_info || '{"_cohort":"owl-demo"}'::jsonb
+WHERE license_code = 'DEMO0001';

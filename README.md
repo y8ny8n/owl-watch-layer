@@ -11,16 +11,29 @@
 
 ## 빠른 시작
 
+도커 데모는 **`.env` 없이도** 자체완결로 뜬다(compose 가 pfdb/ollama 호스트와 DEMO0001 시드,
+모델 태그를 직접 지정). 시드 로그는 `now()` 상대시간이라 **기동할 때마다 최신 7일 창 안**에 들어온다.
+
 ```bash
-cp .env.example .env          # 값 채우기 (DEMO_LICENSE_CODE 등)
 docker compose up --build     # onpilot(8080) + ollama(11434) + pfdb(5432)
 
 # 부팅 확인
 curl http://localhost:8080/health      # {"status":"ok"}
 
-# Gemma 모델 사전 다운로드 (최초 1회, 망분리 반입 전 필수)
-docker exec -it onpilot-ollama ollama pull gemma:2b
+# Gemma 모델 사전 다운로드 (최초 1회) — compose 기본 태그와 일치
+docker exec -it onpilot-ollama ollama pull gemma2:2b
 ```
+
+첫 접속(`http://localhost:8080`)은 **설치 마법사**로 시작한다. AI엔진·데이터소스·민감도를
+고르고 완료하면 메인 화면으로 넘어간다. 이후 **[지금 분석]** 을 누르면 시드에서 유출 후보를
+채점해 피드에 올린다(김철수=채널교차 high, 이영희=USB 단독 high).
+
+> **모델 품질을 높이려면(gemma2:9b)**: 컨테이너 CPU 추론은 9b 가 느리다. 두 가지 방법 —
+> ① 컨테이너에서 `ollama pull gemma2:9b` 후 마법사에서 9b 선택(느림, 폴백 방지용 타임아웃 120s).
+> ② 맥 네이티브 ollama(GPU, 이미 9b 보유)를 재사용: `docker-compose.override.yml` 을 만들어
+> onpilot 의 `OLLAMA_URL` 을 `http://host.docker.internal:11434` 로 지정(빠름, 로컬 전용·gitignore됨).
+
+> **마법사를 다시 보고 싶으면**: `rm app/data/owl_setup.json` 후 재접속(이 파일은 런타임 마커라 gitignore).
 
 ## 구조
 

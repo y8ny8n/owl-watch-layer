@@ -4,7 +4,22 @@ services:
   onpilot:
     build: ./app
     container_name: onpilot
-    env_file: .env
+    # 도커 데모는 컨테이너 네트워크(pfdb/ollama 호스트)와 DEMO0001 시드로 자체완결.
+    # env_file(.env)에 의존하지 않는다 — 네이티브(.env=127.0.0.1/oa233262)로 띄워도, .env가 없어도 그대로 뜬다.
+    environment:
+      PFDB_HOST: pfdb
+      PFDB_PORT: "5432"
+      PFDB_NAME: pfdb
+      PFDB_USER: postgres
+      PFDB_PASSWORD: postgres
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: gemma2:2b        # CPU 컨테이너에서 안정적. 품질 원하면 gemma2:9b 로(느려짐) — README 참고
+      DEMO_LICENSE_CODE: DEMO0001    # db/seed 의 시드 라이선스
+      POLICY_SEPARATE_PID: "1"       # 시드의 media_separate 개별정책 pid
+      WATCH_THRESHOLD: "20"
+      WORKHOUR_START: "8"
+      WORKHOUR_END: "19"
+      ANALYSIS_WINDOW_HOURS: "168"
     ports:
       - "8080:8080"
     depends_on:
@@ -19,7 +34,7 @@ services:
     image: ollama/ollama:latest
     container_name: onpilot-ollama
     ports:
-      - "11434:11434"
+      - "11435:11434"   # 호스트 11434(네이티브 ollama)와 충돌 방지. 앱은 컨테이너망(ollama:11434)로 접속.
     volumes:
       - ollama_models:/root/.ollama   # 모델 사전 다운로드분 보존 (망분리 반입 핵심)
     restart: unless-stopped
@@ -32,7 +47,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      - "15432:5432"   # 호스트 5432(네이티브 postgres)와 충돌 방지. 앱은 컨테이너망(pfdb:5432)로 접속.
     volumes:
       - pfdb_data:/var/lib/postgresql/data
       # 최초 기동 시 schema/*.sql → seed/*.sql 순서로 자동 적재

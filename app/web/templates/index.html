@@ -4,19 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>OWL — On-prem Watch Layer</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=13">
+  <link rel="stylesheet" href="/static/css/style.css?v=18">
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-brand">
       <span class="owl-mark" aria-hidden="true">
         <svg viewBox="0 0 32 32" width="26" height="26">
-          <circle cx="16" cy="16" r="15" fill="#141b2e" stroke="#f5b301" stroke-width="1.5"/>
-          <circle cx="11" cy="14" r="4.2" fill="#0b1020" stroke="#f5b301" stroke-width="1.3"/>
-          <circle cx="21" cy="14" r="4.2" fill="#0b1020" stroke="#f5b301" stroke-width="1.3"/>
-          <circle cx="11" cy="14" r="1.7" fill="#ffc94a"/>
-          <circle cx="21" cy="14" r="1.7" fill="#ffc94a"/>
-          <path d="M14 19 L16 22 L18 19 Z" fill="#f5b301"/>
+          <circle cx="16" cy="16" r="15" fill="#fff2e3" stroke="#f5820a" stroke-width="1.5"/>
+          <circle cx="11" cy="14" r="4.2" fill="#ffffff" stroke="#f5820a" stroke-width="1.3"/>
+          <circle cx="21" cy="14" r="4.2" fill="#ffffff" stroke="#f5820a" stroke-width="1.3"/>
+          <circle cx="11" cy="14" r="1.7" fill="#f5820a"/>
+          <circle cx="21" cy="14" r="1.7" fill="#f5820a"/>
+          <path d="M14 19 L16 22 L18 19 Z" fill="#f5820a"/>
         </svg>
       </span>
       <span class="brand-word">OWL</span>
@@ -24,6 +24,10 @@
       <span class="live-dot" title="24시간 감시 중">LIVE</span>
     </div>
     <div class="topbar-actions">
+      <div class="view-seg" id="viewSeg" role="tablist" aria-label="보기 전환">
+        <button type="button" class="vseg-btn vseg-active" data-view="reports">리포트</button>
+        <button type="button" class="vseg-btn" data-view="watch">감시목록</button>
+      </div>
       <select id="statusFilter" class="select">
         <option value="">전체</option>
         <option value="new">신규</option>
@@ -31,13 +35,14 @@
         <option value="actioned">조치됨</option>
         <option value="dismissed">기각</option>
       </select>
+      <a href="/setup" class="btn" title="설정 변경">설정</a>
       <button id="runBtn" class="btn btn-primary">지금 분석</button>
     </div>
   </header>
 
   <main class="layout">
     <section class="feed-pane">
-      <div class="pane-head">감시 리포트</div>
+      <div class="pane-head" id="paneHead">감시 리포트</div>
       <div class="window-seg" id="windowSeg" role="tablist" aria-label="분석 기간">
         <button type="button" class="seg-btn" data-window="1d">일</button>
         <button type="button" class="seg-btn seg-active" data-window="7d">주</button>
@@ -72,12 +77,32 @@
 
   <div id="previewModal" class="modal-overlay hidden">
     <div class="modal">
-      <h3>정책 변경 미리보기</h3>
+      <h3>정책 조정 · 승인 전 확인</h3>
       <div id="previewTarget" class="preview-target"></div>
-      <pre id="previewDiff" class="diff-box"></pre>
+
+      <div class="edit-group">
+        <div class="edit-label">동작</div>
+        <div class="edit-radios" id="editBlockType">
+          <label class="edit-radio sel" data-block="media"><span class="er-dot"></span>USB 매체 차단</label>
+          <label class="edit-radio disabled" data-block="fileattach"><span class="er-dot"></span>파일첨부 차단<span class="soon">곧 지원</span></label>
+          <label class="edit-radio disabled" data-block="genai"><span class="er-dot"></span>생성형 AI 차단<span class="soon">곧 지원</span></label>
+        </div>
+      </div>
+
+      <div class="edit-group">
+        <div class="edit-label">적용 시점</div>
+        <div class="edit-seg" id="editScope">
+          <button type="button" class="es-btn" data-scope="night">야간</button>
+          <button type="button" class="es-btn" data-scope="weekend">주말</button>
+          <button type="button" class="es-btn es-active" data-scope="all">상시</button>
+        </div>
+      </div>
+
+      <div class="change-preview" id="changePreview"></div>
+
       <div class="modal-actions">
         <button id="previewCancel" class="btn">취소</button>
-        <button id="previewApprove" class="btn btn-primary">승인</button>
+        <button id="previewApprove" class="btn btn-primary">승인 · 차단 적용</button>
       </div>
     </div>
   </div>
@@ -95,6 +120,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/js/app.js?v=13"></script>
+  <script src="/static/js/app.js?v=18"></script>
 </body>
 </html>

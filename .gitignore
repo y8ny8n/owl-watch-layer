@@ -5,3 +5,15 @@ __pycache__/
 *.tar
 .gstack/
 .DS_Store
+
+# 런타임 설치 마커(마법사 상태) — 커밋 금지, 클론 시 마법사부터 시작
+app/data/owl_setup.json
+# 로컬 전용 compose 오버라이드(예: 호스트 ollama 사용)
+docker-compose.override.yml
+# 데모 영상 원본/편집 산출물·임시
+*.mov
+*.mp4
+.enc.log
+list.txt
+# 제출 산출물 폴더(소스 아님 — 제출 페이지로 별도 제출)
+/submission/

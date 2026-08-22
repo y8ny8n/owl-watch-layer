@@ -20,6 +20,9 @@
     currentTargetAgentId: null,
     currentTargetName: null,
     currentWindow: "7d", // 일(1d)/주(7d)/월(30d) 기간 렌즈. 기본 주.
+    view: "reports",     // reports(피드) | watch(감시목록 상태 그룹)
+    watchPins: [],       // 지속 관찰 핀된 pno 목록
+    watchItems: [],      // 감시목록 현재 아이템(핀 토글 후 재렌더용)
     pendingPreview: null // {slots, target_agent_id, target_name}
   };
 
@@ -27,6 +30,9 @@
   var detailEl = document.getElementById("detail");
   var statusFilterEl = document.getElementById("statusFilter");
   var runBtn = document.getElementById("runBtn");
+  var viewSeg = document.getElementById("viewSeg");
+  var paneHead = document.getElementById("paneHead");
+  var summaryBarEl = document.getElementById("summaryBar");
 
   var chatToggle = document.getElementById("chatToggle");
   var chatPanel = document.getElementById("chatPanel");
@@ -38,7 +44,8 @@
 
   var previewModal = document.getElementById("previewModal");
   var previewTarget = document.getElementById("previewTarget");
-  var previewDiff = document.getElementById("previewDiff");
+  var editScope = document.getElementById("editScope");
+  var changePreview = document.getElementById("changePreview");
   var previewCancel = document.getElementById("previewCancel");
   var previewApprove = document.getElementById("previewApprove");
 
@@ -125,12 +132,24 @@
   // ── 리포트 피드 ──
 
   function loadReports() {
-    var status = statusFilterEl.value;
     var params = ["window=" + encodeURIComponent(state.currentWindow)];
-    if (status) params.push("status=" + encodeURIComponent(status));
+    if (state.view !== "watch") {
+      var status = statusFilterEl.value;
+      if (status) params.push("status=" + encodeURIComponent(status));
+    }
     fetch("/api/reports?" + params.join("&"))
       .then(function (res) { return res.json(); })
-      .then(function (data) { renderFeed(data.items || []); })
+      .then(function (data) {
+        if (state.view === "watch") {
+          // 핀 목록을 먼저 받아 그룹 배치에 반영
+          fetch("/api/watchlist/pins")
+            .then(function (r) { return r.json(); })
+            .then(function (p) { state.watchPins = p.pinned || []; renderWatchlist(data.items || []); })
+            .catch(function () { renderWatchlist(data.items || []); });
+        } else {
+          renderFeed(data.items || []);
+        }
+      })
       .catch(function () { showToast("리포트 목록 조회 실패", true); });
   }
 
@@ -179,6 +198,113 @@
     return div.innerHTML;
   }
 
+  // ── 감시목록 (상태 그룹) ──
+
+  function _isDone(it) { return it.status === "actioned" || it.status === "dismissed"; }
+  function _isPersist(it) { return (it.recurrence_weeks || 0) >= 2; }
+
+  // 리포트를 4그룹으로 배정 (우선순위: 마무리 > 핀(지속관찰) > 반출(고위험) > 2주반복(지속관찰) > 추적)
+  function bucketReports(items) {
+    var pins = state.watchPins || [];
+    var g = { exfil: [], tracking: [], persist: [], done: [] };
+    items.forEach(function (it) {
+      if (_isDone(it)) g.done.push(it);
+      else if (pins.indexOf(it.pno) >= 0) g.persist.push(it);  // 관리자 핀 = 지속 관찰 고정
+      else if (it.severity === "high") g.exfil.push(it);
+      else if (_isPersist(it)) g.persist.push(it);
+      else g.tracking.push(it);
+    });
+    return g;
+  }
+
+  var WATCH_GROUPS = [
+    ["exfil", "반출로 이어짐", "킬체인 완성 · 반출 발생", "wg-exfil"],
+    ["tracking", "추적 중", "은폐 정황 · 지켜보는 중", "wg-track"],
+    ["persist", "지속 관찰", "2주+ 반복 · 관리자 핀", "wg-persist"],
+    ["done", "마무리됨", "조치됨 · 기각", "wg-done"]
+  ];
+
+  function renderWatchlist(items) {
+    state.watchItems = items;
+    if (!items.length) {
+      feedEl.innerHTML = '<div class="empty-state">이 기간에는 감시 대상이 없습니다.</div>';
+      detailEl.innerHTML = '<div class="empty-state">이 기간에는 이상 징후가 없습니다.</div>';
+      state.currentPno = null;
+      return;
+    }
+    var pins = state.watchPins || [];
+    var g = bucketReports(items);
+    feedEl.innerHTML = WATCH_GROUPS.map(function (o) {
+      var arr = g[o[0]];
+      if (!arr.length) return "";
+      var cards = arr.map(function (it) {
+        var card = renderCard(it);
+        if (o[0] === "exfil") {
+          card = card.replace('<div class="chips">', '<div class="chips"><span class="exfil-tag">USB 반출됨</span>');
+        }
+        if (o[0] !== "done") {
+          var pinned = pins.indexOf(it.pno) >= 0;
+          var label = pinned ? "📌 지속 관찰 중" : "지속 관찰 고정";
+          card = card.replace('<div class="card-time">',
+            '<div class="wg-pinrow"><button type="button" class="pin-btn' + (pinned ? " pinned" : "") +
+            '" data-pno="' + it.pno + '" data-pinned="' + pinned + '">' + label + '</button></div><div class="card-time">');
+        }
+        return card;
+      }).join("");
+      return '<div class="watch-group ' + o[3] + '">' +
+        '<div class="wg-head"><span class="wg-dot"></span>' +
+        '<span class="wg-title">' + o[1] + '</span>' +
+        '<span class="wg-count">' + arr.length + '</span>' +
+        '<span class="wg-hint">' + o[2] + '</span></div>' +
+        cards + "</div>";
+    }).join("");
+
+    Array.prototype.forEach.call(feedEl.querySelectorAll(".report-card"), function (card) {
+      card.addEventListener("click", function () {
+        loadDetail(parseInt(card.getAttribute("data-pno"), 10));
+      });
+    });
+    Array.prototype.forEach.call(feedEl.querySelectorAll(".pin-btn"), function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var pno = parseInt(btn.getAttribute("data-pno"), 10);
+        var newPinned = btn.getAttribute("data-pinned") !== "true";
+        fetch("/api/watchlist/pin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pno: pno, pinned: newPinned })
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (d) {
+            state.watchPins = d.pinned || [];
+            showToast(newPinned ? "지속 관찰로 고정했습니다" : "지속 관찰 해제");
+            renderWatchlist(state.watchItems);  // 그룹 재배치
+          })
+          .catch(function () { showToast("핀 저장 실패", true); });
+      });
+    });
+
+    if (state.currentPno == null && items.length) loadDetail(items[0].pno);
+  }
+
+  function switchView(v) {
+    if (v === state.view) return;
+    state.view = v;
+    Array.prototype.forEach.call(viewSeg.querySelectorAll(".vseg-btn"), function (b) {
+      b.classList.toggle("vseg-active", b.getAttribute("data-view") === v);
+    });
+    paneHead.textContent = v === "watch" ? "감시 목록 · 상태별" : "감시 리포트";
+    statusFilterEl.classList.toggle("hide", v === "watch");
+    if (summaryBarEl) summaryBarEl.classList.toggle("hide", v === "watch");
+    state.currentPno = null;
+    if (v !== "watch") loadSummary();
+    loadReports();
+  }
+
+  Array.prototype.forEach.call(viewSeg.querySelectorAll(".vseg-btn"), function (b) {
+    b.addEventListener("click", function () { switchView(b.getAttribute("data-view")); });
+  });
+
   // ── 리포트 상세 ──
 
   function loadDetail(pno) {
@@ -215,12 +341,7 @@
       '<div class="chips">' + channelChips(channels) + "</div>" +
       '<div class="gauge-wrap">' +
       '<div class="gauge-label"><span>위험 점수</span><span>' + riskScore + ' / 100 · <b style="color:' + gaugeColor(report.severity) + '">' + (SEVERITY_LABEL[report.severity] || "") + "</b></span></div>" +
-      '<div class="gauge-bar">' +
-        '<div class="gauge-fill" style="width:' + Math.min(100, riskScore) + "%;background:" + gaugeColor(report.severity) + '"></div>' +
-        '<span class="gauge-tick" style="left:20%"></span>' +
-        '<span class="gauge-tick" style="left:35%"></span>' +
-        '<span class="gauge-tick" style="left:60%"></span>' +
-      "</div>" +
+      segGauge(riskScore) +
       '<div class="gauge-scale">임계 — 관심 <b>20</b> · 주의 <b>35</b> · 고위험 <b>60</b> &nbsp;·&nbsp; 위험 신호가 겹칠수록 점수가 올라갑니다</div>' +
       "</div>" +
       '<div class="section-title">AI 진단' + modelTag(report.model_name) + "</div>" +
@@ -249,10 +370,36 @@
   }
 
   function gaugeColor(severity) {
-    if (severity === "high") return "#e5484d";
-    if (severity === "mid") return "#f2a900";
-    if (severity === "watch") return "#4aa3ff";
-    return "#8a94a6";
+    if (severity === "high") return "#d64540";
+    if (severity === "mid") return "#f5820a";
+    if (severity === "watch") return "#3f83c9";
+    return "#a89a86";
+  }
+
+  // 세그먼트 게이지 — 20칸, 점수만큼 채우고 초록→주황→빨강 스펙트럼으로 물듦
+  function segGauge(score) {
+    var n = 20;
+    var s = Math.max(0, Math.min(100, score));
+    var filled = Math.round((s / 100) * n);
+    var out = '<div class="seg-gauge" role="img" aria-label="위험 점수 ' + s + ' / 100">';
+    for (var i = 0; i < n; i++) {
+      if (i < filled) {
+        out += '<span class="seg on" style="background:' + segColor(i / (n - 1)) + '"></span>';
+      } else {
+        out += '<span class="seg"></span>';
+      }
+    }
+    out += "</div>";
+    out += '<div class="seg-ends"><span class="seg-safe">안전</span><span class="seg-danger">위험</span></div>';
+    return out;
+  }
+  function segColor(t) {
+    var g = [47, 158, 111], a = [245, 130, 10], r = [224, 85, 79];
+    var c = t < 0.5 ? mixRgb(g, a, t / 0.5) : mixRgb(a, r, (t - 0.5) / 0.5);
+    return "rgb(" + c[0] + "," + c[1] + "," + c[2] + ")";
+  }
+  function mixRgb(a, b, t) {
+    return [Math.round(a[0] + (b[0] - a[0]) * t), Math.round(a[1] + (b[1] - a[1]) * t), Math.round(a[2] + (b[2] - a[2]) * t)];
   }
 
   var CATEGORY_LABEL = { 1: "웹하드", 2: "메신저", 6: "메일", 7: "개인 클라우드", 10: "원격제어", 100: "브라우저" };
@@ -462,15 +609,46 @@
     requestPreview({ utterance: utterance }, utterance);
   });
 
+  // 적용 시점(scope) → 사람이 읽는 한 줄 (서버 _scope_line 과 동일 개념)
+  function scopeText(scope) {
+    if (scope === "night") return "적용: 오늘 22:00 ~ 내일 06:00 (1회성)";
+    if (scope === "weekend") return "적용: 이번 주말 (토·일)";
+    return "적용: 상시 (기간 제한 없음)";
+  }
+
+  // 편집한 값으로 "허용 통과 → 차단" 변경 미리보기를 다시 그림
+  function renderChangePreview() {
+    if (!state.pendingPreview) return;
+    var name = state.pendingPreview.target_name || "대상";
+    changePreview.innerHTML =
+      '<div class="cp-flow"><span class="cp-before">지금 · 허용 통과</span>' +
+      '<span class="cp-arrow">→</span><span class="cp-after">차단</span></div>' +
+      '<div class="cp-line">' + escapeHtml(name) + " · USB 매체 차단 · " + scopeText(state.pendingPreview.scope) + "</div>";
+  }
+
+  function setScope(scope) {
+    if (!state.pendingPreview) return;
+    state.pendingPreview.scope = scope;
+    Array.prototype.forEach.call(editScope.querySelectorAll(".es-btn"), function (b) {
+      b.classList.toggle("es-active", b.getAttribute("data-scope") === scope);
+    });
+    renderChangePreview();
+  }
+
+  // 적용 시점 세그먼트 편집 — 승인 전 관리자가 직접 조정
+  Array.prototype.forEach.call(editScope.querySelectorAll(".es-btn"), function (b) {
+    b.addEventListener("click", function () { setScope(b.getAttribute("data-scope")); });
+  });
+
   function openPreview(data) {
+    var scope = (data.slots && data.slots.scope) || "all";
     state.pendingPreview = {
-      slots: data.slots,
       target_agent_id: state.currentTargetAgentId,
-      target_name: data.target_name || state.currentTargetName
+      target_name: data.target_name || state.currentTargetName,
+      scope: scope
     };
     previewTarget.textContent = "대상: " + (data.target_name || state.currentTargetName || "-");
-    var diffLines = data.diff_lines || [];
-    previewDiff.textContent = Array.isArray(diffLines) ? diffLines.join("\n") : String(diffLines);
+    setScope(scope);
     previewModal.classList.remove("hidden");
   }
 
@@ -492,7 +670,11 @@
           body: JSON.stringify({
             license_code: cfg.license_code,
             agent_id: state.pendingPreview.target_agent_id,
-            slots: state.pendingPreview.slots,
+            slots: {
+              intent: "block_media",
+              target_agent_id: state.pendingPreview.target_agent_id,
+              scope: state.pendingPreview.scope
+            },
             report_pno: state.currentPno
           })
         });
